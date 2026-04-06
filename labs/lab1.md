@@ -5,6 +5,10 @@ Walla Walla University
 
 ---
 
+## Due Tuesday, April 7th, 9AM
+
+---
+
 ## Overview
 
 In this lab you will **run complete programs and observe their behavior**. There is no coding required. Your job is to read the output carefully, record what you see, and reason about what it means.
