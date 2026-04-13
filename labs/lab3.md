@@ -399,122 +399,101 @@ One reason vector outperforms linked lists so dramatically on access is **cache 
 #include <chrono>
 #include <iomanip>
 #include <numeric>
-#include <cstdint>
+#include <algorithm>
+#include <random>
 using namespace std;
+
 using Clock = chrono::high_resolution_clock;
 using us    = chrono::duration<double, micro>;
 
 struct Node {
-    int   data;
+    int data;
     Node* next;
     Node(int v) : data(v), next(nullptr) {}
 };
 
-void pushFront(Node*& head, int v) {
-    Node* n = new Node(v); n->next = head; head = n;
-}
-
 void clearList(Node*& h) {
-    while (h) { Node* t = h->next; delete h; h = t; }
-}
-
-// Compute gap between consecutive node addresses
-void printAddressGaps(Node* head, int limit = 8) {
-    cout << "  First " << limit << " node addresses and gaps:\n";
-    Node* prev = nullptr;
-    int count = 0;
-    for (Node* c = head; c && count < limit; c = c->next, count++) {
-        uintptr_t addr = (uintptr_t)c;
-        if (prev) {
-            intptr_t gap = (intptr_t)c - (intptr_t)prev;
-            cout << "    [" << setw(4) << c->data << "] @ "
-                 << hex << addr << dec
-                 << "  (gap from prev: " << gap << " bytes)\n";
-        } else {
-            cout << "    [" << setw(4) << c->data << "] @ "
-                 << hex << addr << dec << "  (head)\n";
-        }
-        prev = c;
+    while (h) {
+        Node* t = h->next;
+        delete h;
+        h = t;
     }
 }
 
+// Build a RANDOMIZED (scattered) linked list
+Node* buildRandomList(int n) {
+    vector<Node*> nodes;
+    nodes.reserve(n);
+
+    // allocate nodes
+    for (int i = 0; i < n; i++)
+        nodes.push_back(new Node(i));
+
+    // shuffle pointers to destroy locality
+    random_device rd;
+    mt19937 g(rd());
+    shuffle(nodes.begin(), nodes.end(), g);
+
+    // link them
+    for (int i = 0; i < n - 1; i++)
+        nodes[i]->next = nodes[i + 1];
+    nodes[n - 1]->next = nullptr;
+
+    return nodes[0]; // head
+}
+
 template<typename Fn>
-double timeUs(Fn fn, int reps = 100) {
+double timeUs(Fn fn, int reps = 1000) {
+    // warm-up (important!)
+    for (int i = 0; i < 100; i++) fn();
+
     auto t0 = Clock::now();
     for (int i = 0; i < reps; i++) fn();
     return us(Clock::now() - t0).count() / reps;
 }
 
 int main() {
-    const int N = 10000;
+    cout << "\n=== Cache Locality Experiment: Vector vs Linked List ===\n\n";
 
-    // --- Part 1: Show node address scatter ---
-    cout << "\n=== Part 1: Where do linked list nodes live in memory? ===\n\n";
-
-    // Freshly allocated list (nodes interleaved with other allocations)
-    Node* fresh = nullptr;
-    for (int i = 0; i < N; i++) pushFront(fresh, i);
-    cout << "Fresh list (nodes allocated one by one):\n";
-    printAddressGaps(fresh);
-
-    // --- Part 2: Traversal speed — linked list vs vector ---
-    cout << "\n=== Part 2: Traversal speed (sum all elements) ===\n\n";
-
-    vector<int> arr(N);
-    iota(arr.begin(), arr.end(), 0);
-
-    cout << setw(10) << "n"
-         << setw(24) << "Vector sum (us)"
-         << setw(24) << "Linked list sum (us)"
+    cout << setw(12) << "n"
+         << setw(20) << "Vector (us)"
+         << setw(22) << "Linked List (us)"
          << setw(14) << "Slowdown"
-         << "\n" << string(72, '-') << "\n";
+         << "\n" << string(70, '-') << "\n";
 
-    vector<int> tsizes = {1000, 5000, 10000};
-    for (int n : tsizes) {
-        vector<int> v(n); iota(v.begin(), v.end(), 0);
-        Node* ll = nullptr;
-        for (int i = n-1; i >= 0; i--) pushFront(ll, i);
+    vector<int> sizes = {100000, 500000, 1000000};
+
+    for (int n : sizes) {
+        // contiguous array
+        vector<int> v(n);
+        iota(v.begin(), v.end(), 0);
+
+        // scattered linked list
+        Node* ll = buildRandomList(n);
 
         volatile long long sink = 0;
 
-        double vec_t = timeUs([&]{
+        double vec_t = timeUs([&] {
             long long s = 0;
             for (int x : v) s += x;
             sink = s;
-        }, 2000);
+        }, 500);
 
-        double ll_t = timeUs([&]{
+        double ll_t = timeUs([&] {
             long long s = 0;
-            for (Node* c = ll; c; c = c->next) s += c->data;
+            for (Node* c = ll; c; c = c->next)
+                s += c->data;
             sink = s;
         }, 500);
 
-        cout << setw(10) << n
-             << setw(24) << fixed << setprecision(2) << vec_t
-             << setw(24) << ll_t
+        cout << setw(12) << n
+             << setw(20) << fixed << setprecision(2) << vec_t
+             << setw(22) << ll_t
              << setw(13) << setprecision(1) << (ll_t / vec_t) << "x\n";
 
         clearList(ll);
     }
 
-    // --- Part 3: Doubly-linked list — cost of two pointers ---
-    struct DNode {
-        int data; DNode* next; DNode* prev;
-        DNode(int v) : data(v), next(nullptr), prev(nullptr) {}
-    };
-
-    cout << "\n=== Part 3: Node size — singly vs doubly linked ===\n\n";
-    cout << "  sizeof(int)          = " << sizeof(int)   << " bytes\n";
-    cout << "  sizeof(Node*)        = " << sizeof(Node*) << " bytes\n";
-    cout << "  sizeof(Node) singly  = " << sizeof(Node)  << " bytes  "
-         << "(data + 1 pointer)\n";
-    cout << "  sizeof(DNode) doubly = " << sizeof(DNode) << " bytes  "
-         << "(data + 2 pointers)\n";
-    cout << "\n  For a list of " << N << " nodes:\n";
-    cout << "    Singly linked: " << N * sizeof(Node)  << " bytes\n";
-    cout << "    Doubly linked: " << N * sizeof(DNode) << " bytes\n";
-
-    clearList(fresh);
     cout << "\n";
 }
 ```
