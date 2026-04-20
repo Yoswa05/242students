@@ -536,15 +536,7 @@ Record the first 8 node addresses and their gaps from the program output:
 
 ### Critical Thinking Questions — Model 3
 
-**Q7.** Look at the address gaps in Table 3a. Are the nodes contiguous (gap ≈ `sizeof(Node)`)? Or are they spread out? What does this tell you about how `new` allocates memory and why linked lists are "pointer-chasing" structures?
-
-> Your answer:
-
 **Q8.** In Table 3b, both the vector and the linked list perform the same total number of additions (n additions). Yet the linked list is significantly slower. The work is identical — why is the time different? What is the CPU doing between each addition in the linked list case that it doesn't have to do for the vector?
-
-> Your answer:
-
-**Q9.** Look at Table 3c. A doubly-linked node stores one extra pointer compared to a singly-linked node. How many extra bytes does that add per node? For 10,000 nodes, how many extra bytes total does that cost? Is this a meaningful difference in practice?
 
 > Your answer:
 
